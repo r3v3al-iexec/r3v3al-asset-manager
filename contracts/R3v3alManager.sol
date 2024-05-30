@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-// Uncomment this line to use console.log
-// import "hardhat/console.sol";
 
 contract R3v3alfunds {
 
@@ -24,8 +22,8 @@ contract R3v3alfunds {
     mapping(bytes32 datasetId => SubMapInfo) public SubMapInfoByDatasetId;
 
     struct MapInfo{
-        uint64 lockedFund;
-        uint64 unlockTime;
+        uint256 lockedFund;
+        uint256 unlockTime;
         MapSize mapSize;
         address mapCreator;
         uint64 totalReward; // total Funds allocated for the entire map / for this campaign // desplayed in frontend 
@@ -47,9 +45,9 @@ contract R3v3alfunds {
         uint32 y;
     }
 
-    event Withdrawal(uint amount, uint when);
+    event Withdrawal(uint amount, address receiver);
 
-    constructor(uint32 _lockPeriod, address _communityPool, uint64 sStake, uint64 mStake,uint64 lStake) payable {
+    constructor(uint32 _lockPeriod, address _communityPool, uint64 sStake, uint64 mStake,uint64 lStake) {
         builderAdmin = payable(msg.sender);
         lockPeriod = _lockPeriod * 1 days;
         communityPool = _communityPool;
@@ -57,35 +55,50 @@ contract R3v3alfunds {
         StakedFundsByMapSize[MapSize.M] = mStake;
         StakedFundsByMapSize[MapSize.L] = lStake;
     }
+ 
+    function initMap(bytes32 mapID, MapSize mapSize, uint64 totalReward ,uint64 totalWinnerCoordonate ,uint32 totalSubMaps) public payable {
+        require(msg.value == StakedFundsByMapSize[mapSize], "not enough staked funds to create map");
+        mapInfoByMapId[mapID] =MapInfo(msg.value, block.timestamp + lockPeriod, mapSize,msg.sender, totalReward , totalWinnerCoordonate , totalSubMaps);
+    }
 
+    // function createAndFunMaps(bytes32 mapID, bytes32[] calldata datasetIds) payable {
+    //     // transfer Stake 
 
+    //     for (uint256 i = 0; i < datasetIds.length; i++) { 
+    //         createAndFunMap(datasetIds[i])
+    //     }
+    // }
 
-
+    // function createAndFunMap(bytes32 datasetId) {
+    //     // transfer Reward for each sub maps
+    // }
 
     /// WITHDRAW FUNCTIONS FOR MAP CREATOR
-    function MapCreatorWithdrawFundsOfStake(bytes32 mapID ) public {
+    function mapCreatorWithdrawFundsOfStake(bytes32 mapID ) public {
         require(block.timestamp >= mapInfoByMapId[mapID].unlockTime, "You can't withdraw yet");
         require(msg.sender == mapInfoByMapId[mapID].mapCreator, "You are not allowed to withdraw funds");
 
-        emit Withdrawal(address(this).balance, block.timestamp);
-        uint64 withdrawAmount = mapInfoByMapId[mapID].lockedFund * returnRation / 100;
-        uint64 communityPoolAmount = mapInfoByMapId[mapID].lockedFund - withdrawAmount;
+        uint256 withdrawAmount = mapInfoByMapId[mapID].lockedFund * returnRation / 100;
+        uint256 communityPoolAmount = mapInfoByMapId[mapID].lockedFund - withdrawAmount;
         payable(msg.sender).transfer(withdrawAmount);
+        emit Withdrawal(withdrawAmount, msg.sender);
         payable(communityPool).transfer(communityPoolAmount);
+        emit Withdrawal(communityPoolAmount, communityPool);
     }
 
-        function MapCreatorWithdrawOfSubMaps(bytes32 datasetId ) public {
+    function MapCreatorWithdrawOfSubMaps(bytes32 datasetId ) public {
         require(block.timestamp >= SubMapInfoByDatasetId[datasetId].endOfGame, "You can't withdraw yet");
         require(msg.sender == SubMapInfoByDatasetId[datasetId].mapCreator, "You are not allowed to withdraw funds");
 
-        emit Withdrawal(address(this).balance, block.timestamp);
         uint64 withdrawAmount = SubMapInfoByDatasetId[datasetId].totalRewardLeft * returnRation / 100;
         payable(msg.sender).transfer(withdrawAmount);
+        emit Withdrawal(withdrawAmount, msg.sender);
+
     }
 
     // SHOW REWARD KEY FOR PLAYER
 
-    function ShowRewardKey(bytes32 datasetId) external view returns (address) {
+    function showRewardKey(bytes32 datasetId) external view returns (address) {
         return SubMapInfoByDatasetId[datasetId].mapRewardManager;
     }
 }
