@@ -34,6 +34,8 @@ contract R3v3alfunds {
     }
 
     struct SubMapInfo{
+        uint64 endOfGame;
+        address mapCreator;
         address mapRewardManager;
         uint64 totalReward; // how much the map Creator will fund this submap 
         uint64 totalRewardLeft;
@@ -47,8 +49,7 @@ contract R3v3alfunds {
 
     event Withdrawal(uint amount, uint when);
 
-    constructor(uint64 _lockPeriod, address _communityPool, uint64 sStake, uint64 mStake,uint64 lStake) payable {
-
+    constructor(uint32 _lockPeriod, address _communityPool, uint64 sStake, uint64 mStake,uint64 lStake) payable {
         builderAdmin = payable(msg.sender);
         lockPeriod = _lockPeriod * 1 days;
         communityPool = _communityPool;
@@ -59,15 +60,32 @@ contract R3v3alfunds {
 
 
 
-    function withdraw() public {
-        // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
-        // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
 
-        require(block.timestamp >= unlockTime, "You can't withdraw yet");
-        require(msg.sender == owner, "You aren't the owner");
+
+    /// WITHDRAW FUNCTIONS FOR MAP CREATOR
+    function MapCreatorWithdrawFundsOfStake(bytes32 mapID ) public {
+        require(block.timestamp >= mapInfoByMapId[mapID].unlockTime, "You can't withdraw yet");
+        require(msg.sender == mapInfoByMapId[mapID].mapCreator, "You are not allowed to withdraw funds");
 
         emit Withdrawal(address(this).balance, block.timestamp);
+        uint64 withdrawAmount = mapInfoByMapId[mapID].lockedFund * returnRation / 100;
+        uint64 communityPoolAmount = mapInfoByMapId[mapID].lockedFund - withdrawAmount;
+        payable(msg.sender).transfer(withdrawAmount);
+        payable(communityPool).transfer(communityPoolAmount);
+    }
 
-        owner.transfer(address(this).balance);
+        function MapCreatorWithdrawOfSubMaps(bytes32 datasetId ) public {
+        require(block.timestamp >= SubMapInfoByDatasetId[datasetId].endOfGame, "You can't withdraw yet");
+        require(msg.sender == SubMapInfoByDatasetId[datasetId].mapCreator, "You are not allowed to withdraw funds");
+
+        emit Withdrawal(address(this).balance, block.timestamp);
+        uint64 withdrawAmount = SubMapInfoByDatasetId[datasetId].totalRewardLeft * returnRation / 100;
+        payable(msg.sender).transfer(withdrawAmount);
+    }
+
+    // SHOW REWARD KEY FOR PLAYER
+
+    function ShowRewardKey(bytes32 datasetId) external view returns (address) {
+        return SubMapInfoByDatasetId[datasetId].mapRewardManager;
     }
 }
