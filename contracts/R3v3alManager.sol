@@ -10,13 +10,13 @@ contract R3v3alfunds {
 
     // Admin deal with total amount of staked Value per Map size
     enum MapSize { S, M, L }
-    mapping(MapSize => uint64) public stakedFundsByMapSize;
+    mapping(MapSize => uint256 necessaryAmount) public stakedFundsByMapSize;
 
     mapping(address => bytes32[]) public datasetIdByMapCreator;
     mapping(address => bytes32[]) public mapsCreatedByMapCreator;
 
-    mapping(bytes32 => MapInfo) public mapInfoByMapId;
-    mapping(bytes32 => SubMapInfo) public subMapInfoByDatasetId;
+    mapping(bytes32 mapId=> MapInfo) public mapInfoByMapId;
+    mapping(bytes32 datasetId => SubMapInfo) public subMapInfoByDatasetId;
 
     struct MapInfo {
         uint256 lockedFund;
@@ -29,11 +29,11 @@ contract R3v3alfunds {
     }
 
     struct SubMapInfo {
-        uint64 endOfGame;
+        uint256 endOfGame;
         address mapCreator;
         address mapRewardManager;
-        uint64 totalReward; // how much the map Creator will fund this submap
-        uint64 totalRewardLeft;
+        uint256 totalReward; // how much the map Creator will fund this submap
+        uint256 totalRewardLeft;
         Point[] claimedCoordinates; // already claimed coordinates
     }
 
@@ -43,6 +43,8 @@ contract R3v3alfunds {
     }
 
     event Withdrawal(uint256 amount, address receiver);
+    event RewardDistributed(address indexed player, uint256 amount, Point coordinates);
+
 
     constructor(uint32 _lockPeriod, address _communityPool, uint64 sStake, uint64 mStake, uint64 lStake) {
         builderAdmin = payable(msg.sender);
@@ -53,9 +55,9 @@ contract R3v3alfunds {
         stakedFundsByMapSize[MapSize.L] = lStake;
     }
  
-    function initMap(bytes32 mapID, MapSize mapSize, uint256 totalReward, uint64 totalWinnerCoordinates, uint32 totalSubMaps) public payable {
+    function initMap(bytes32 mapId, MapSize mapSize, uint256 totalReward, uint64 totalWinnerCoordinates, uint32 totalSubMaps) public payable {
         require(msg.value == stakedFundsByMapSize[mapSize], "Insufficient staked funds to create map");
-        mapInfoByMapId[mapID] = MapInfo({
+        mapInfoByMapId[mapId] = MapInfo({
             lockedFund: msg.value,
             unlockTime: block.timestamp + lockPeriod,
             mapSize: mapSize,
@@ -64,20 +66,56 @@ contract R3v3alfunds {
             totalWinnerCoordinates: totalWinnerCoordinates,
             totalSubMaps: totalSubMaps
         });
+        mapsCreatedByMapCreator[msg.sender].push(mapId);
     }
 
-    function createAndFundMap(bytes32 mapID, bytes32 datasetId) public {
-        require(msg.sender == mapInfoByMapId[mapID].mapCreator, "Only the map creator can fund the map");
-        // Add logic to fund the map with the datasetId
+    function createAndFundMap(bytes32 mapId, bytes32 datasetId , uint32 gameDuration) public payable {
+    require(msg.sender == mapInfoByMapId[mapId].mapCreator, "Only the map creator can fund the map");
+        // Initialisation du sous-map avec des informations pertinentes
+        SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
+        subMapInfo.endOfGame = block.timestamp + gameDuration * 1 days;
+        subMapInfo.mapCreator = msg.sender;
+        subMapInfo.mapRewardManager = msg.sender;
+        subMapInfo.totalReward = msg.value;
+        subMapInfo.totalRewardLeft = msg.value;
+
+        datasetIdByMapCreator[msg.sender].push(datasetId);
+    }
+
+    function distribtueReward(bytes32 datasetId, address player, Point calldata winningCoordinates, uint256 rewardedAmount) public {
+        require(msg.sender == subMapInfoByDatasetId[datasetId].mapRewardManager, "Only the map creator can fund the map");
+
+        SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
+        require(msg.sender == subMapInfo.mapRewardManager, "Only the map reward manager can distribute rewards");
+        require(rewardedAmount <= subMapInfo.totalRewardLeft, "Insufficient reward balance");
+
+        // Check if coordinates have been claimed already
+        for (uint i = 0; i < subMapInfo.claimedCoordinates.length; i++) {
+            require(
+                subMapInfo.claimedCoordinates[i].x != winningCoordinates.x || 
+                subMapInfo.claimedCoordinates[i].y != winningCoordinates.y, 
+                "Coordinates already claimed"
+            );
+        }
+
+        // Add the new winning coordinates
+        subMapInfo.claimedCoordinates.push(winningCoordinates);
+
+        // Update the reward left
+        subMapInfo.totalRewardLeft -= rewardedAmount;
+
+        // Transfer the reward to the player
+        payable(player).transfer(rewardedAmount);
+        emit RewardDistributed(player, rewardedAmount, winningCoordinates);
     }
 
     /// WITHDRAW FUNCTIONS FOR MAP CREATOR
-    function mapCreatorWithdrawFundsOfStake(bytes32 mapID) public {
-        require(block.timestamp >= mapInfoByMapId[mapID].unlockTime, "Unlock period has not yet passed");
-        require(msg.sender == mapInfoByMapId[mapID].mapCreator, "Only the map creator can withdraw funds");
+    function mapCreatorWithdrawFundsOfStake(bytes32 mapId) public {
+        require(block.timestamp >= mapInfoByMapId[mapId].unlockTime, "Unlock period has not yet passed");
+        require(msg.sender == mapInfoByMapId[mapId].mapCreator, "Only the map creator can withdraw funds");
 
-        uint256 withdrawAmount = mapInfoByMapId[mapID].lockedFund * returnRatio / 1000;
-        uint256 communityPoolAmount = mapInfoByMapId[mapID].lockedFund - withdrawAmount;
+        uint256 withdrawAmount = mapInfoByMapId[mapId].lockedFund * returnRatio / 1000;
+        uint256 communityPoolAmount = mapInfoByMapId[mapId].lockedFund - withdrawAmount;
         payable(msg.sender).transfer(withdrawAmount);
         emit Withdrawal(withdrawAmount, msg.sender);
         payable(communityPool).transfer(communityPoolAmount);
@@ -88,7 +126,7 @@ contract R3v3alfunds {
         require(block.timestamp >= subMapInfoByDatasetId[datasetId].endOfGame, "End of game period has not yet passed");
         require(msg.sender == subMapInfoByDatasetId[datasetId].mapCreator, "Only the map creator can withdraw funds");
 
-        uint64 withdrawAmount = subMapInfoByDatasetId[datasetId].totalRewardLeft * returnRatio / 1000;
+        uint256 withdrawAmount = subMapInfoByDatasetId[datasetId].totalRewardLeft * returnRatio / 1000;
         payable(msg.sender).transfer(withdrawAmount);
         emit Withdrawal(withdrawAmount, msg.sender);
     }
