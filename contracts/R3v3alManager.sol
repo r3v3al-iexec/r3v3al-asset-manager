@@ -85,7 +85,7 @@ contract R3v3alfunds {
     }
 
     function distributeReward(bytes32 datasetId, address player, Point calldata winningCoordinates, uint256 rewardedAmount) public {
-        require(msg.sender == subMapInfoByDatasetId[datasetId].mapRewardManager, "Only the map creator can fund the map");
+        require(msg.sender == subMapInfoByDatasetId[datasetId].mapRewardManager, "Only the map reward manager can distribute the map reward");
 
         SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
         require(msg.sender == subMapInfo.mapRewardManager, "Only the map reward manager can distribute rewards");
@@ -93,8 +93,6 @@ contract R3v3alfunds {
 
         // Check if coordinates have been claimed already
         for (uint i = 0; i < subMapInfo.claimedCoordinates.length; i++) {
-        console.log(" subMapInfo.claimedCoordinates[i].x  %o",  subMapInfo.claimedCoordinates[i].x );
-        console.log(" subMapInfo.claimedCoordinates[i].y  %o",  subMapInfo.claimedCoordinates[i].y );
 
             require(
                 subMapInfo.claimedCoordinates[i].x != winningCoordinates.x && 
@@ -112,6 +110,13 @@ contract R3v3alfunds {
         // Transfer the reward to the player
         payable(player).transfer(rewardedAmount);
         emit RewardDistributed(player, rewardedAmount, winningCoordinates);
+    }
+
+    function setRewardKeyAddress(bytes32 datasetId,address newRewardDistributor) public {
+        require(msg.sender == subMapInfoByDatasetId[datasetId].mapCreator, "Only the map creator can set the new reward manager");
+        require(msg.sender != newRewardDistributor, "Cannot set the new reward manager with your address");
+        SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
+        subMapInfo.mapRewardManager = newRewardDistributor;
     }
 
     /// WITHDRAW FUNCTIONS FOR MAP CREATOR
