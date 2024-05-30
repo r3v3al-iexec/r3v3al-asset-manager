@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
+import "hardhat/console.sol";
+
 contract R3v3alfunds {
 
     address payable public builderAdmin;
@@ -82,7 +84,7 @@ contract R3v3alfunds {
         datasetIdByMapCreator[msg.sender].push(datasetId);
     }
 
-    function distribtueReward(bytes32 datasetId, address player, Point calldata winningCoordinates, uint256 rewardedAmount) public {
+    function distributeReward(bytes32 datasetId, address player, Point calldata winningCoordinates, uint256 rewardedAmount) public {
         require(msg.sender == subMapInfoByDatasetId[datasetId].mapRewardManager, "Only the map creator can fund the map");
 
         SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
@@ -91,8 +93,11 @@ contract R3v3alfunds {
 
         // Check if coordinates have been claimed already
         for (uint i = 0; i < subMapInfo.claimedCoordinates.length; i++) {
+        console.log(" subMapInfo.claimedCoordinates[i].x  %o",  subMapInfo.claimedCoordinates[i].x );
+        console.log(" subMapInfo.claimedCoordinates[i].y  %o",  subMapInfo.claimedCoordinates[i].y );
+
             require(
-                subMapInfo.claimedCoordinates[i].x != winningCoordinates.x || 
+                subMapInfo.claimedCoordinates[i].x != winningCoordinates.x && 
                 subMapInfo.claimedCoordinates[i].y != winningCoordinates.y, 
                 "Coordinates already claimed"
             );
