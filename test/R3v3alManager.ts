@@ -5,7 +5,7 @@ import {ethers} from "hardhat";
 
 describe("R3v3alfunds", function () {
     async function deployR3v3alfundsFixture() {
-        const [owner, otherAccount, player, communityPool] = await ethers.getSigners();
+        const [owner, otherAccount, player, communityPool,rewardDistributor] = await ethers.getSigners();
         const lockPeriod = 30; // 30 days lock period
         const sStake = ethers.parseEther("1");
         const mStake = ethers.parseEther("2");
@@ -14,7 +14,7 @@ describe("R3v3alfunds", function () {
         const R3v3alfunds = await ethers.getContractFactory("R3v3alfunds");
         const r3v3alfunds = await R3v3alfunds.deploy(lockPeriod, communityPool.address, sStake, mStake, lStake);
 
-        return { r3v3alfunds, owner, otherAccount, player, communityPool, lockPeriod,sStake, mStake, lStake };
+        return { r3v3alfunds, owner, otherAccount, player, communityPool, rewardDistributor,lockPeriod,sStake, mStake, lStake };
     }
 
     describe("Deployment", function () {
@@ -68,7 +68,7 @@ describe("R3v3alfunds", function () {
 
     describe("Rewards", function () {
         it("Should distribute rewards correctly", async function () {
-            const { r3v3alfunds, owner, player, sStake } = await loadFixture(deployR3v3alfundsFixture);
+            const { r3v3alfunds, owner, player,rewardDistributor ,sStake } = await loadFixture(deployR3v3alfundsFixture);
             const mapId = ethers.encodeBytes32String("map1");
             const datasetId = ethers.encodeBytes32String("dataset1");
             const totalReward = ethers.parseEther("10");
@@ -78,14 +78,11 @@ describe("R3v3alfunds", function () {
 
             await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
             await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
-
-            await r3v3alfunds.connect(owner).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount);
+            await r3v3alfunds.connect(owner).setRewardKeyAddress(datasetId,rewardDistributor);
+            await r3v3alfunds.connect(rewardDistributor).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount);
 
             const subMapInfo = await r3v3alfunds.subMapInfoByDatasetId(datasetId);
             expect(subMapInfo.totalRewardLeft).to.equal(totalReward - rewardAmount);
-
-            // await expect(() => r3v3alfunds.connect(owner).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount))
-            //     .to.changeEtherBalance(player, rewardAmount);
         });
     });
 
@@ -176,4 +173,172 @@ describe("R3v3alfunds", function () {
             expect(datasets[0]).to.equal(datasetId);
         });
     });
+
+    describe("R3v3alfunds - Additional Tests", function () {
+        describe("Map Creation Failures", function () {
+            it("Should fail to create a map with insufficient staked funds", async function () {
+                const { r3v3alfunds, owner } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const totalReward = ethers.parseEther("10");
+                const insufficientStake = ethers.parseEther("0.5");
+    
+                await expect(
+                    r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: insufficientStake })
+                ).to.be.revertedWith("Insufficient staked funds to create map");
+            });
+    
+            it("Should fail to create and fund a sub-map by non-map creator", async function () {
+                const { r3v3alfunds, owner, otherAccount, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+    
+                await expect(
+                    r3v3alfunds.connect(otherAccount).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward })
+                ).to.be.revertedWith("Only the map creator can fund the map");
+            });
+        });
+    
+        describe("Rewards Failures", function () {
+            it("Should fail to distribute rewards by non-reward manager", async function () {
+                const { r3v3alfunds, owner, player, otherAccount, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+                const winningCoordinates = { x: 1, y: 2 };
+                const rewardAmount = ethers.parseEther("1");
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+    
+                await expect(
+                    r3v3alfunds.connect(otherAccount).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount)
+                ).to.be.revertedWith("Only the map reward manager can distribute rewards");
+            });
+    
+            it("Should fail to distribute rewards with insufficient reward balance", async function () {
+                const { r3v3alfunds, owner, player, sStake,rewardDistributor } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("1"); // Small reward for testing
+                const gameDuration = 10;
+                const winningCoordinates = { x: 1, y: 2 };
+                const rewardAmount = ethers.parseEther("2"); // More than the total reward
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+                await r3v3alfunds.connect(owner).setRewardKeyAddress(datasetId,rewardDistributor);
+                await expect(
+                    r3v3alfunds.connect(rewardDistributor).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount)
+                ).to.be.revertedWith("Insufficient reward balance");
+            });
+    
+            it("Should prevent double spending of coordinates", async function () {
+                const { r3v3alfunds, owner, player, sStake ,rewardDistributor} = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+                const winningCoordinates = { x: 1, y: 2 };
+                const rewardAmount = ethers.parseEther("1");
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+                await r3v3alfunds.connect(owner).setRewardKeyAddress(datasetId,rewardDistributor);
+                await r3v3alfunds.connect(rewardDistributor).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount);
+    
+                await expect(
+                    r3v3alfunds.connect(rewardDistributor).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount)
+                ).to.be.revertedWith("Coordinates already claimed");
+            });
+        });
+    
+        describe("Withdrawals Failures", function () {
+            it("Should fail to withdraw staked funds before lock period ends", async function () {
+                const { r3v3alfunds, owner, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const totalReward = ethers.parseEther("10");
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+    
+                await expect(
+                    r3v3alfunds.connect(owner).mapCreatorWithdrawFundsOfStake(mapId)
+                ).to.be.revertedWith("Unlock period has not yet passed");
+            });
+    
+            it("Should fail to withdraw sub-map funds before game duration ends", async function () {
+                const { r3v3alfunds, owner, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+    
+                await expect(
+                    r3v3alfunds.connect(owner).mapCreatorWithdrawOfSubMaps(datasetId)
+                ).to.be.revertedWith("End of game period has not yet passed");
+            });
+        });
+    
+        describe("Updating Reward Manager", function () {
+            it("Should update the reward manager and allow only the new manager to distribute rewards", async function () {
+                const { r3v3alfunds, owner, otherAccount, player, sStake,rewardDistributor } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+                const winningCoordinates = { x: 1, y: 2 };
+                const rewardAmount = ethers.parseEther("1");
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+    
+                await r3v3alfunds.connect(owner).setRewardKeyAddress(datasetId, otherAccount.address);
+    
+                await expect(
+                    r3v3alfunds.connect(owner).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount)
+                ).to.be.revertedWith("Only the map reward manager can distribute rewards");
+                await r3v3alfunds.connect(owner).setRewardKeyAddress(datasetId,rewardDistributor);
+                await r3v3alfunds.connect(rewardDistributor).distributeReward(datasetId, player.address, winningCoordinates, rewardAmount);
+                const subMapInfo = await r3v3alfunds.subMapInfoByDatasetId(datasetId);
+                expect(subMapInfo.totalRewardLeft).to.equal(totalReward - rewardAmount);
+            });
+        });
+    
+        describe("View Functions", function () {
+            it("Should return correct map info after initialization", async function () {
+                const { r3v3alfunds, owner, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const totalReward = ethers.parseEther("10");
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+    
+                const mapInfo = await r3v3alfunds.getMapInfo(mapId);
+                expect(mapInfo.mapCreator).to.equal(owner.address);
+                expect(mapInfo.lockedFund).to.equal(sStake);
+            });
+    
+            it("Should return correct sub-map info after funding", async function () {
+                const { r3v3alfunds, owner, sStake } = await loadFixture(deployR3v3alfundsFixture);
+                const mapId = ethers.encodeBytes32String("map1");
+                const datasetId = ethers.encodeBytes32String("dataset1");
+                const totalReward = ethers.parseEther("10");
+                const gameDuration = 10;
+    
+                await r3v3alfunds.connect(owner).initMap(mapId, 0, totalReward, 100, 10, { value: sStake });
+                await r3v3alfunds.connect(owner).createAndFundMap(mapId, datasetId, gameDuration, { value: totalReward });
+    
+                const subMapInfo = await r3v3alfunds.getSubMapInfo(datasetId);
+                expect(subMapInfo.mapCreator).to.equal(owner.address);
+                expect(subMapInfo.totalReward).to.equal(totalReward);
+            });
+        });
+    });
+    
 });
