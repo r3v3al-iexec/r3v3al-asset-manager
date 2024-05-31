@@ -168,4 +168,31 @@ contract R3v3alfunds {
     function getRemainingReward(bytes32 datasetId) external view returns (uint256) {
         return subMapInfoByDatasetId[datasetId].totalRewardLeft;
     }
+
+    // Additional view functions
+
+    function getMapCreator(bytes32 mapId) external view returns (address) {
+        return mapInfoByMapId[mapId].mapCreator;
+    }
+
+    function getMapUnlockTime(bytes32 mapId) external view returns (uint256) {
+        return mapInfoByMapId[mapId].unlockTime;
+    }
+
+    function getMapTotalReward(bytes32 mapId) external view returns (uint256) {
+        return mapInfoByMapId[mapId].totalReward;
+    }
+
+    function getMapTotalWinnerCoordinates(bytes32 mapId) external view returns (uint64) {
+        return mapInfoByMapId[mapId].totalWinnerCoordinates;
+    }
+
+    function getMapTotalSubMaps(bytes32 mapId) external view returns (uint32) {
+        return mapInfoByMapId[mapId].totalSubMaps;
+    }
+
+    function getSubMapCreator(bytes32 datasetId) external view returns (address) {
+        return subMapInfoByDatasetId[datasetId].mapCreator;
+    }
+
 }
