@@ -99,7 +99,15 @@ graph TD
 To deploy the contract, use the following command:
 
 ```bash
-npx hardhat run scripts/deploy.js --network <network-name>
+npx hardhat ignition deploy ./ignition/modules/R3v3alfundsModule.ts --network <network-name>
+```
+
+Deployed [here](https://blockscout-v6.bellecour.iex.ec/address/0x3092c6B927d19B98967913756153Ea86B65774dC?tab=contract)
+
+## Smart contract verification
+
+```bash
+npx hardhat ignition verify chain-134
 ```
 
 ## Testing
