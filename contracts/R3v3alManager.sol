@@ -86,6 +86,7 @@ contract R3v3alfunds {
 
     function distributeReward(bytes32 datasetId, address player, Point calldata winningCoordinates, uint256 rewardedAmount) public {
         require(msg.sender == subMapInfoByDatasetId[datasetId].mapRewardManager, "Only the map reward manager can distribute the map reward");
+        require(msg.sender != subMapInfoByDatasetId[datasetId].mapCreator, "Map creator can't distribute the map reward");
 
         SubMapInfo storage subMapInfo = subMapInfoByDatasetId[datasetId];
         require(msg.sender == subMapInfo.mapRewardManager, "Only the map reward manager can distribute rewards");
